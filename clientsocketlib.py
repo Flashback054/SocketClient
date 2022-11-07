@@ -18,8 +18,8 @@ class Header:
                     headerField=line[0:line.find(':')]
                     fieldValue=line[line.find(': ') + 2 : len(line) - 2]
                     setattr(self,headerField,fieldValue)
-        except socket.error as err :
-            raise err
+        except socket.error as sockerr :
+            raise sockerr
         except Exception as exp:
             raise exp
 
@@ -59,8 +59,8 @@ class Response:
                     content=self.getContentFromContentLength(sock,contentLength)    
 
             return content
-        except socket.err as sockErr:
-            raise sockErr
+        except socket.error as sockerr:
+            raise sockerr
         except Exception as exp:
             raise exp
 
@@ -68,8 +68,8 @@ class Response:
         try:
             content=recv_s(sock,contentLength)
             return content
-        except socket.error as err :
-            raise err
+        except socket.error as sockerr :
+            raise sockerr
         except Exception as exp:
             raise exp
 
@@ -96,8 +96,8 @@ class Response:
 
             return b"".join(content)
         
-        except socket.error as err :
-            raise err
+        except socket.error as sockerr :
+            raise sockerr
         except Exception as exp:
             raise exp
 
@@ -109,8 +109,8 @@ class Response:
                     break
                 if (line in ('','\r\n','\n','')):
                     break
-        except socket.error as err :
-            raise err
+        except socket.error as sockerr :
+            raise sockerr
         except Exception as exp:
             raise exp
 
@@ -143,14 +143,15 @@ class Response:
 
 def initConnection(HOST,PORT):
     try:
-        hostIP=socket.gethostbyname(HOST)
         sock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        hostIP=socket.gethostbyname(HOST)
         sock.connect((hostIP,PORT))
+
         return sock
-    except socket.error as err:
-        raise err
-    except socket.gaierror as gaierr:
+    except socket.gaierror as gaierr: # get address info error
         raise gaierr
+    except socket.error as sockerr:
+        raise sockerr
 
 def splitHostAndPath(HOST):
     # Split url into Host and Path
@@ -171,8 +172,8 @@ def sendGETRequest(sock,host,path):
     try:
         request=f'GET /{path} HTTP/1.1\r\nHost: {host}\r\nConnection: Keep-alive\r\n\r\n'
         sock.sendall(request.encode('utf-8'))
-    except socket.error as err :
-        raise err
+    except socket.error as sockerr :
+        raise sockerr
 
 # safely receive n bytes from socket
 def recv_s(sock,nbytes):
@@ -180,8 +181,12 @@ def recv_s(sock,nbytes):
         remain=nbytes
         result=[]
         while True:
+            # set timeout :after 20sec if sock.recv can't finish (ex: lost internet) => raise timeout error
+            sock.settimeout(20.0) 
             data=sock.recv(remain)
-            if (len(data)==0): # server has closed the socket
+            if (len(data)==0):
+                # maybe socket is idle for too long --> timeout
+                # or maximum allowed number of requests on that socket has been reached
                 raise Exception('Server has closed the socket.')
             
             remain-=len(data)
@@ -190,8 +195,11 @@ def recv_s(sock,nbytes):
                 break
 
         return b"".join(result)
-    except socket.error as err:
-        raise err
+
+    except socket.timeout:
+        raise socket.error('[WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.')
+    except socket.error as sockerr:
+        raise sockerr
     except Exception as exp:
         raise exp
 
@@ -209,8 +217,8 @@ def getLine(sock):
 
         result=(b"".join(lines)).decode('utf-8')
         return result
-    except socket.error as err:
-        raise err
+    except socket.error as sockerr:
+        raise sockerr
     except Exception as exp:
         raise exp
 
@@ -228,24 +236,24 @@ def createFileFromData(path,data):
 def downloadFile(HOST,PORT): 
     try: 
         handleDownloadFile(HOST,PORT)
-    except socket.error as sockErr:
-        print(f'Socket error downloading file from {HOST} : {sockErr}')
-    except socket.gaierror as gaiErr:
-        print(f'Get address info error during downloading file from {HOST} : {gaiErr}')
-    except OSError as osErr:
-        print(f'Error writing file downloaded from {HOST} : {osErr}')
+    except socket.gaierror as gaierr:
+        print(f'Get address info error during downloading file from {HOST} : {gaierr}')
+    except socket.error as sockerr:
+        print(f'Socket error downloading file from {HOST} : {sockerr}')
+    except OSError as oserr:
+        print(f'Error writing file downloaded from {HOST} : {oserr}')
     except Exception as exp:
         print(f'Exception occurred during downloading file from {HOST} : {exp}')
 
 def downloadAllFiles(HOST,PORT):
     try:
         handleDownloadAllFiles(HOST,PORT)
-    except socket.error as sockErr:
-        print(f'Socket error during downloading all files from folder {HOST} : {sockErr}')
-    except socket.gaierror as gaiErr:
-        print(f'Get address info error during downloading all files from folder {HOST} : {gaiErr}')
-    except OSError as osErr:
-        print(f'Error writing files downloaded from folder {HOST} : {osErr}')
+    except socket.gaierror as gaierr:
+        print(f'Get address info error during downloading all files from folder {HOST} : {gaierr}')
+    except socket.error as sockerr:
+        print(f'Socket error during downloading all files from folder {HOST} : {sockerr}')
+    except OSError as oserr:
+        print(f'Error writing files downloaded from downloading folder {HOST} : {oserr}')
     except Exception as exp:
         print(f'Exception occurred during downloading all files from folder {HOST} : {exp}')
 
@@ -264,7 +272,7 @@ def handleDownloadFile(HOST,PORT):
         response = Response(sock)
 
         if (response.header.statusCode >= 200 and response.header.statusCode < 300): 
-            response.content=response.getContent(sock,response.header) # return content in b"" format
+            response.content=response.getContent(sock,response.header) # get content in b"" format
 
             if (path==''):
                 # default: index.html
@@ -275,10 +283,10 @@ def handleDownloadFile(HOST,PORT):
         else:
             raise Exception(f'Response status code : {response.header.statusCode} .')
 
-    except socket.error as sockErr:
-        raise sockErr
-    except socket.gaierror as gaiErr:
-        raise gaiErr
+    except socket.gaierror as gaierr:
+        raise gaierr
+    except socket.error as sockerr:
+        raise sockerr
     except OSError as oserr:
         raise oserr
     except Exception as exp:
@@ -324,17 +332,17 @@ def handleDownloadAllFiles(HOST,PORT):
                         if (subResponse.header.statusCode==200):
                             subResponse.content = subResponse.getContent(sock,subResponse.header)
                             createFileFromData(os.path.join(currDir,folderPath,fileName),subResponse.content)
-            else: # Connection: Close:
+            else: # Response header has "Connection: Close"
                 raise Exception('Server closed connection right after response')
         else: # statusCode < 200 or statusCode >= 300
             raise Exception(f'Response status code : {response.header.statusCode} .')
 
-    except socket.error as sockErr:
-        raise sockErr
-    except socket.gaierror as gaiErr:
-        raise gaiErr
-    except OSError as osErr:
-        raise osErr
+    except socket.gaierror as gaierr:
+        raise gaierr
+    except socket.error as sockerr:
+        raise sockerr
+    except OSError as oserr:
+        raise oserr
     except Exception as exp:
         raise exp
 
