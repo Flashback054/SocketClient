@@ -14,9 +14,9 @@ class Header:
                 if (line=='\r\n'):
                     break
                 else:
-                    # ex: Content-Length: 100\r\n ===>headerField='Content-Length', fieldValue='100'
-                    headerField=line[0:line.find(':')]
-                    fieldValue=line[line.find(': ') + 2 : len(line) - 2]
+                    # ex: Content-Length: 100\r\n ===>headerField='content-length', fieldValue='100'
+                    headerField=line[0:line.find(':')].lower()
+                    fieldValue=line[line.find(': ') + 2 : len(line) - 2].lower()
                     setattr(self,headerField,fieldValue)
         except socket.error as sockerr :
             raise sockerr
@@ -24,19 +24,19 @@ class Header:
             raise exp
 
     def isChunkedEncoding(self):
-        if (hasattr(self,'Transfer-Encoding')):
-            if (getattr(self,'Transfer-Encoding')=='chunked'):
+        if (hasattr(self,'transfer-encoding')):
+            if (getattr(self,'transfer-encoding')=='chunked'):
                 return True
         return False
 
     def getContentLength(self):
-        if (hasattr(self,'Content-Length')):
-            return int(getattr(self,'Content-Length'))
+        if (hasattr(self,'content-length')):
+            return int(getattr(self,'content-length'))
         else:
             return -1
 
     def getFileFormat(self):
-        contentType = getattr(self,'Content-Type')
+        contentType = getattr(self,'content-type')
         if (contentType.find(';')!=-1): # ex: Content-Type: application/json; charset=utf-8...
             formatField=contentType[0 : contentType.find(';')]
             fileFormat=formatField[formatField.rfind('/') + 1 : ]
@@ -56,7 +56,9 @@ class Response:
             else:
                 contentLength=self.header.getContentLength()
                 if (contentLength!=-1):
-                    content=self.getContentFromContentLength(sock,contentLength)    
+                    content=self.getContentFromContentLength(sock,contentLength)
+                else: # header doesn't include both Content-Length and Transfer-Encoding: chunk
+                    raise Exception('No "Content-Length" or "Transfer-Encoding: chunked" found in response.')    
 
             return content
         except socket.error as sockerr:
@@ -314,7 +316,7 @@ def handleDownloadAllFiles(HOST,PORT):
         response = Response(sock)
 
         if (response.header.statusCode>=200 and response.header.statusCode<300):
-            if (getattr(response.header,'Connection') == 'Keep-Alive'):
+            if (getattr(response.header,'connection') == 'keep-alive'):
                 response.content=response.getContent(sock,response.header) # return content in b"" format
                 content=response.getDecodedContent('utf-8') # decode in order to parse all <a> tags
 
